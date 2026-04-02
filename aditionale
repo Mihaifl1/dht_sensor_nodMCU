@@ -1,0 +1,77 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <DHT.h>
+
+// ================== CONFIGURARE ==================
+const char* ssid = "Kablem";
+const char* password = "Kablem325$";
+
+const char* serverUrl = "http://192.168.66.49/update";
+
+const char* deviceUUID = "device_1";     // <--- SCHIMBĂ pentru fiecare ESP (device_2, device_3...)
+
+#define DHTPIN D2
+#define DHTTYPE DHT22
+
+DHT dht(DHTPIN, DHTTYPE);
+// ================================================
+
+void setup() {
+  Serial.begin(115200);
+  dht.begin();
+
+  WiFi.begin(ssid, password);
+  Serial.print("Conectare WiFi");
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nWiFi conectat!");
+  Serial.print("IP: ");
+  Serial.println(WiFi.localIP());
+  Serial.print("UUID: ");
+  Serial.println(deviceUUID);
+}
+
+void loop() {
+  if (WiFi.status() == WL_CONNECTED) {
+    
+    float temp = dht.readTemperature();
+    float hum = dht.readHumidity();
+
+    if (isnan(temp) || isnan(hum)) {
+      Serial.println("Eroare citire DHT11!");
+    } 
+    else {
+      HTTPClient http;
+      WiFiClient client;
+
+      http.begin(client, serverUrl);
+      http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+
+      String postData = "uuid=" + String(deviceUUID) +
+                        "&temp=" + String(temp, 2) +
+                        "&hum=" + String(hum, 2) +
+                        "&mac=" + WiFi.macAddress();
+
+      int httpResponseCode = http.POST(postData);
+
+      if (httpResponseCode > 0) {
+        Serial.printf("[%s] OK → Temp: %.2f°C | Hum: %.2f%% | MAC: %s\n", 
+                      deviceUUID, temp, hum, WiFi.macAddress().c_str());
+      } else {
+        Serial.printf("[%s] Eroare! Cod: %d\n", deviceUUID, httpResponseCode);
+      }
+
+      http.end();
+    }
+  } 
+  else {
+    Serial.println("WiFi deconectat! Reconectez...");
+    WiFi.reconnect();
+  }
+
+  delay(300000);   // 5 minute
+}
